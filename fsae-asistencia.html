@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de asistencia — Formula SAE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase (solo se usa si llenas FIREBASE_CONFIG abajo en el <script>; ver README.md) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#14171b;
+    --panel:#1b2027;
+    --panel-2:#20262e;
+    --line:#2c333c;
+    --text:#edeae3;
+    --muted:#8890a0;
+    --accent:#ff6a1a;
+    --accent-soft:#4a2c15;
+    --good:#3ea76b;
+    --good-soft:#173226;
+    --bad:#e15b4b;
+    --bad-soft:#3a1e1a;
+    --warn:#f2b705;
+    --warn-soft:#3a2f0c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Oswald',sans-serif;
+    min-height:100vh;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  #app{max-width:1000px;margin:0 auto;padding:20px 18px 60px;}
+  input,select,textarea,button{font-size:16px;} /* prevents iOS auto-zoom on focus */
+
+  /* ---------- topbar ---------- */
+  .topbar{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    border-bottom:2px solid var(--accent);
+    padding-bottom:14px;margin-bottom:22px;flex-wrap:wrap;gap:14px;
+  }
+  .brand{display:flex;flex-direction:column;gap:2px;}
+  .brand .kicker{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);letter-spacing:.02em;}
+  .brand h1{margin:0;font-size:26px;font-weight:600;letter-spacing:.01em;}
+  .brand h1 span{color:var(--accent);}
+  .clockbox{text-align:right;}
+  .clockbox .clock{font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:500;line-height:1;}
+  .clockbox .date{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);margin-top:4px;}
+
+  .userpill{
+    display:flex;align-items:center;gap:10px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);
+  }
+  .userpill b{color:var(--text);font-weight:600;}
+  .linkbtn{
+    background:none;border:none;color:var(--accent);font-family:'IBM Plex Mono',monospace;
+    font-size:13px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px;
+  }
+  .linkbtn:hover{color:#ff8a4d;}
+
+  /* ---------- banner ---------- */
+  .banner{
+    background:var(--warn-soft);border:1px solid var(--warn);color:var(--warn);
+    font-family:'IBM Plex Mono',monospace;font-size:12px;padding:10px 14px;margin-bottom:18px;
+    line-height:1.5;
+  }
+  .banner b{color:var(--warn);}
+
+  /* ---------- login ---------- */
+  .loginwrap{max-width:420px;margin:14vh auto 0;text-align:center;}
+  .loginwrap .kicker{font-family:'IBM Plex Mono',monospace;color:var(--muted);font-size:13px;margin-bottom:8px;}
+  .loginwrap h1{font-size:30px;margin:0 0 6px;}
+  .loginwrap h1 span{color:var(--accent);}
+  .loginwrap p{color:var(--muted);font-size:14px;margin-bottom:26px;}
+  .loginform{display:flex;flex-direction:column;gap:12px;text-align:left;}
+  .loginform label{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+
+  input,select,textarea{
+    background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+    padding:11px 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;border-radius:2px;
+    width:100%;min-height:44px;
+  }
+  textarea{min-height:44px;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);}
+  button{
+    font-family:'Oswald',sans-serif;cursor:pointer;border-radius:2px;
+    -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+  }
+  .btn{
+    background:var(--accent);color:#14171b;border:none;font-weight:600;
+    padding:12px 18px;font-size:15px;letter-spacing:.02em;min-height:44px;
+  }
+  .btn:hover{background:#ff7d38;}
+  .btn.secondary{background:transparent;color:var(--text);border:1px solid var(--line);font-weight:500;}
+  .btn.secondary:hover{border-color:var(--accent);color:var(--accent);}
+  .btn.small{padding:9px 13px;font-size:13px;min-height:38px;}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+  /* ---------- layout ---------- */
+  .grid{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;margin-bottom:22px;}
+  @media (max-width:720px){.grid{grid-template-columns:1fr;}}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--accent);
+    padding:18px;
+  }
+  .panel h2{
+    font-size:14px;text-transform:none;letter-spacing:.01em;margin:0 0 16px;
+    color:var(--text);font-weight:600;border-bottom:1px solid var(--line);padding-bottom:10px;
+  }
+  .panel h2 small{color:var(--muted);font-weight:400;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-left:8px;}
+
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .quickbtns{display:flex;gap:8px;margin-bottom:14px;}
+  .quickbtns button{flex:1;}
+  .err{color:var(--bad);font-size:12px;font-family:'IBM Plex Mono',monospace;margin-top:8px;min-height:16px;}
+
+  .stat{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line);}
+  .stat:last-child{border-bottom:none;}
+  .stat .label{font-size:13px;color:var(--muted);}
+  .stat .value{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;}
+  .stat .value.good{color:var(--good);}
+  .stat .value.warn{color:var(--warn);}
+
+  /* ---------- table ---------- */
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{
+    text-align:left;font-family:'IBM Plex Mono',monospace;font-weight:500;color:var(--muted);
+    font-size:11px;padding:8px 10px;border-bottom:1px solid var(--line);
+  }
+  td{padding:9px 10px;border-bottom:1px solid var(--line);font-family:'IBM Plex Mono',monospace;vertical-align:middle;}
+  tr:hover td{background:var(--panel-2);}
+  .rownum{color:var(--muted);}
+  .badge{
+    display:inline-block;padding:3px 9px;border-radius:2px;font-size:11px;font-weight:600;
+    letter-spacing:.01em;
+  }
+  .badge.pendiente{background:var(--warn-soft);color:var(--warn);}
+  .badge.aprobado{background:var(--good-soft);color:var(--good);}
+  .badge.rechazado{background:var(--bad-soft);color:var(--bad);}
+  .flag{color:var(--bad);cursor:help;margin-left:6px;}
+  .empty{color:var(--muted);font-size:13px;padding:20px 0;text-align:center;font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- admin ---------- */
+  .adminzone{margin-top:36px;border-top:1px solid var(--line);padding-top:20px;}
+  .adminlogin{
+    background:var(--panel);border:1px solid var(--line);padding:16px;max-width:340px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .adminbar{
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;
+  }
+  .adminbar h2{margin:0;font-size:18px;border:none;padding:0;}
+  .admintag{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);
+    border:1px solid var(--accent-soft);background:var(--accent-soft);padding:3px 8px;
+  }
+  .summarystrip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;}
+  .sumcard{
+    background:var(--panel-2);border:1px solid var(--line);padding:10px 14px;min-width:140px;flex:1;
+  }
+  .sumcard .n{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;}
+  .sumcard .l{font-size:12px;color:var(--muted);}
+  .actions{display:flex;gap:6px;flex-wrap:wrap;}
+  .notebox{margin-top:6px;display:flex;gap:6px;}
+  .notebox textarea{min-height:36px;resize:vertical;}
+  .filters{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  .filters select{width:auto;min-width:160px;}
+  .loading{color:var(--muted);font-family:'IBM Plex Mono',monospace;padding:40px;text-align:center;}
+
+  /* ---------- mobile ---------- */
+  @media (max-width:600px){
+    #app{padding:14px 12px 50px;}
+    .topbar{align-items:flex-start;}
+    .brand h1{font-size:21px;}
+    .clockbox{text-align:left;}
+    .clockbox .clock{font-size:22px;}
+    .userpill{flex-wrap:wrap;}
+    .quickbtns{flex-direction:column;}
+    .row2{grid-template-columns:1fr;}
+    .filters{flex-direction:column;align-items:stretch;}
+    .filters select{width:100%;}
+    .summarystrip{gap:8px;}
+    .sumcard{min-width:0;flex:1 1 44%;}
+
+    table thead{display:none;}
+    table, tbody, tr, td{display:block;width:100%;}
+    table tr{
+      border:1px solid var(--line);background:var(--panel-2);
+      margin-bottom:10px;padding:6px 12px;
+    }
+    table td{
+      border:none;display:flex;justify-content:space-between;align-items:center;
+      gap:10px;padding:8px 0;border-bottom:1px solid var(--line);text-align:right;
+    }
+    table td:last-child{border-bottom:none;}
+    table td::before{
+      content:attr(data-label);color:var(--muted);font-size:11px;text-align:left;
+      flex-shrink:0;
+    }
+    table td.rownum::before{content:'';}
+    table td[data-label="Estado"], table td[data-label="Estado / notas"], table td[data-label="Acciones"]{
+      flex-direction:column;align-items:flex-start;text-align:left;
+    }
+    .actions{width:100%;}
+    .actions .btn{flex:1;}
+    .notebox{flex-direction:column;width:100%;}
+    .notebox .btn{width:100%;}
+  }
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">Cargando datos del equipo…</div></div>
+
+<script>
+(function(){
+  const TEAM_NAME = "Formula SAE";
+  const DEFAULT_PIN = "SAE2026";
+
+  // =====================================================================
+  // CONFIGURACIÓN DE FIREBASE — pega aquí la configuración de tu proyecto
+  // (Consola de Firebase > Configuración del proyecto > tus apps > SDK).
+  // Mientras esto tenga el valor de ejemplo, la app funciona en "modo
+  // local": cada quien ve solo sus propios datos, guardados en ESTE
+  // navegador. Para compartir datos entre todo el equipo, sigue las
+  // instrucciones del README.md y reemplaza estos valores.
+  // =====================================================================
+  const FIREBASE_CONFIG = {
+    apiKey: "TU_API_KEY",
+    authDomain: "TU_PROYECTO.firebaseapp.com",
+    projectId: "TU_PROYECTO",
+    storageBucket: "TU_PROYECTO.appspot.com",
+    messagingSenderId: "000000000000",
+    appId: "1:000000000000:web:xxxxxxxxxxxxxxxx"
+  };
+  const FIREBASE_READY = FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== "TU_API_KEY";
+
+  let db = null;
+  if(FIREBASE_READY){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+  }
+
+  let state = {
+    user: null,
+    isAdmin: false,
+    adminAttempt: false,
+    entries: [],
+    roster: [],
+    config: { adminPin: DEFAULT_PIN },
+    loaded: false,
+    loginError: "",
+    formError: "",
+    adminError: "",
+    changePinOpen: false,
+    noteOpenFor: null,
+    filterUser: "ALL"
+  };
+
+  // ---------- local (no-Firebase) persistence ----------
+  function localGet(key, fallback){
+    try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+    catch(e){ return fallback; }
+  }
+  function localSet(key, val){
+    try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){ console.error(e); }
+  }
+
+  // ---------- data layer ----------
+  async function init(){
+    if(FIREBASE_READY){
+      db.collection('entries').onSnapshot(snap => {
+        state.entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        state.loaded = true;
+        render();
+      }, err => console.error('entries listener', err));
+
+      db.collection('meta').doc('roster').onSnapshot(doc => {
+        state.roster = (doc.exists && doc.data().names) || [];
+        render();
+      }, err => console.error('roster listener', err));
+
+      db.collection('meta').doc('config').onSnapshot(doc => {
+        if(doc.exists){ state.config = doc.data(); }
+        else{ db.collection('meta').doc('config').set({ adminPin: DEFAULT_PIN }); }
+        render();
+      }, err => console.error('config listener', err));
+    }else{
+      state.entries = localGet('fsae_entries', []);
+      state.roster = localGet('fsae_roster', []);
+      state.config = localGet('fsae_config', { adminPin: DEFAULT_PIN });
+      state.loaded = true;
+    }
+    const lastUser = localGet('fsae_lastUser', null);
+    if(lastUser) state.user = lastUser;
+    render();
+    startClock();
+  }
+
+  async function addEntry(entry){
+    if(FIREBASE_READY){
+      await db.collection('entries').add(entry);
+    }else{
+      entry.id = Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+      state.entries.push(entry);
+      localSet('fsae_entries', state.entries);
+      render();
+    }
+  }
+  async function updateEntry(id, patch){
+    if(FIREBASE_READY){
+      await db.collection('entries').doc(id).update(patch);
+    }else{
+      const e = state.entries.find(x => x.id === id);
+      if(e) Object.assign(e, patch);
+      localSet('fsae_entries', state.entries);
+      render();
+    }
+  }
+  async function deleteEntry(id){
+    if(FIREBASE_READY){
+      await db.collection('entries').doc(id).delete();
+    }else{
+      state.entries = state.entries.filter(x => x.id !== id);
+      localSet('fsae_entries', state.entries);
+      render();
+    }
+  }
+  async function addRosterName(name){
+    if(state.roster.includes(name)) return;
+    state.roster.push(name);
+    if(FIREBASE_READY){
+      await db.collection('meta').doc('roster').set({ names: state.roster }, { merge: true });
+    }else{
+      localSet('fsae_roster', state.roster);
+    }
+  }
+  async function saveConfig(){
+    if(FIREBASE_READY){
+      await db.collection('meta').doc('config').set(state.config);
+    }else{
+      localSet('fsae_config', state.config);
+      render();
+    }
+  }
+
+  // ---------- utils ----------
+  function todayISO(){
+    const d = new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function nowHM(){
+    const d = new Date();
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  function toMinutes(hm){
+    const [h,m] = hm.split(':').map(Number);
+    return h*60+m;
+  }
+  function calcHours(timeIn, timeOut){
+    const diff = toMinutes(timeOut) - toMinutes(timeIn);
+    return diff / 60;
+  }
+  function fmtHours(h){ return h.toFixed(2); }
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function monthKey(dateStr){ return dateStr ? dateStr.slice(0,7) : ''; }
+
+  function detectAutoFlag(entry, allEntries){
+    if(entry.hours <= 0 || entry.hours > 14) return true;
+    const overlap = allEntries.some(e =>
+      e.id !== entry.id && e.user === entry.user && e.date === entry.date &&
+      toMinutes(entry.timeIn) < toMinutes(e.timeOut) && toMinutes(e.timeIn) < toMinutes(entry.timeOut)
+    );
+    return overlap;
+  }
+
+  // ---------- clock ----------
+  function startClock(){
+    setInterval(() => {
+      const el = document.getElementById('liveClock');
+      const dEl = document.getElementById('liveDate');
+      if(!el) return;
+      const d = new Date();
+      el.textContent = d.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      if(dEl) dEl.textContent = d.toLocaleDateString('es-MX', {weekday:'long', day:'numeric', month:'long'});
+    }, 1000);
+  }
+
+  // ---------- render root ----------
+  function render(){
+    const app = document.getElementById('app');
+    if(!state.loaded){ app.innerHTML = '<div class="loading">Cargando datos del equipo…</div>'; return; }
+    if(!state.user){ app.innerHTML = renderLogin(); attachLoginEvents(); return; }
+    app.innerHTML = renderMain();
+    attachMainEvents();
+  }
+
+  function localModeBanner(){
+    if(FIREBASE_READY) return '';
+    return `<div class="banner"><b>Modo local:</b> aún no configuraste Firebase, así que estos datos solo se guardan en este navegador y no se comparten con el resto del equipo. Revisa el README.md del repositorio para conectar una base de datos compartida gratuita.</div>`;
+  }
+
+  // ---------- login screen ----------
+  function renderLogin(){
+    const options = state.roster.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    return `
+      <div class="loginwrap">
+        ${localModeBanner()}
+        <div class="kicker">CONTROL DE ASISTENCIA</div>
+        <h1>${TEAM_NAME.split(' ')[0]} <span>${TEAM_NAME.split(' ').slice(1).join(' ')}</span></h1>
+        <p>Escribe tu nombre para registrar tus horas de trabajo presencial en el taller.</p>
+        <form class="loginform" id="loginForm">
+          <div>
+            <label>Tu nombre</label>
+            <input type="text" id="nameInput" list="rosterList" placeholder="Ej. Ana Torres" autocomplete="off" required />
+            <datalist id="rosterList">${options}</datalist>
+          </div>
+          <button class="btn" type="submit">Entrar</button>
+          <div class="err">${state.loginError}</div>
+        </form>
+      </div>
+    `;
+  }
+
+  function attachLoginEvents(){
+    const form = document.getElementById('loginForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('nameInput').value.trim();
+      if(!name){ state.loginError = "Escribe tu nombre para continuar."; render(); return; }
+      state.user = name;
+      state.loginError = "";
+      await addRosterName(name);
+      localSet('fsae_lastUser', name);
+      render();
+    });
+  }
+
+  // ---------- main screen ----------
+  function renderMain(){
+    const myEntries = state.entries
+      .filter(e => e.user === state.user)
+      .sort((a,b) => (b.date+b.timeIn).localeCompare(a.date+a.timeIn));
+
+    const thisMonth = monthKey(todayISO());
+    const approvedHours = myEntries.filter(e => e.status === 'aprobado' && monthKey(e.date) === thisMonth)
+      .reduce((s,e) => s + e.hours, 0);
+    const pendingHours = myEntries.filter(e => e.status === 'pendiente' && monthKey(e.date) === thisMonth)
+      .reduce((s,e) => s + e.hours, 0);
+    const flaggedCount = myEntries.filter(e => e.autoFlag && e.status === 'pendiente').length;
+
+    const rows = myEntries.length ? myEntries.map((e, i) => `
+      <tr>
+        <td class="rownum" data-label="#">${myEntries.length - i}</td>
+        <td data-label="Fecha">${e.date}</td>
+        <td data-label="Entrada">${e.timeIn}</td>
+        <td data-label="Salida">${e.timeOut}</td>
+        <td data-label="Horas">${fmtHours(e.hours)} h</td>
+        <td data-label="Estado">
+          <span class="badge ${e.status}">${statusLabel(e.status)}</span>
+          ${e.autoFlag ? '<span class="flag" title="Marcado automáticamente para revisión">⚠</span>' : ''}
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="6" class="empty">Aún no tienes registros este período. Usa el panel para marcar tu asistencia.</td></tr>`;
+
+    return `
+      ${localModeBanner()}
+      <div class="topbar">
+        <div class="brand">
+          <div class="kicker">CONTROL DE ASISTENCIA</div>
+          <h1>${TEAM_NAME.split(' ')[0]} <span>${TEAM_NAME.split(' ').slice(1).join(' ')}</span></h1>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap;">
+          <div class="userpill">Sesión: <b>${escapeHtml(state.user)}</b> · <button class="linkbtn" id="switchUser">cambiar</button></div>
+          <div class="clockbox">
+            <div class="clock mono" id="liveClock">--:--:--</div>
+            <div class="date" id="liveDate"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="panel">
+          <h2>Registrar asistencia <small>trabajo presencial</small></h2>
+          <div class="quickbtns">
+            <button class="btn secondary small" id="markIn" type="button">Marcar entrada ahora</button>
+            <button class="btn secondary small" id="markOut" type="button">Marcar salida ahora</button>
+          </div>
+          <form id="entryForm">
+            <div class="field">
+              <label>Fecha</label>
+              <input type="date" id="fDate" value="${todayISO()}" required />
+            </div>
+            <div class="row2">
+              <div class="field">
+                <label>Hora de entrada</label>
+                <input type="time" id="fIn" required />
+              </div>
+              <div class="field">
+                <label>Hora de salida</label>
+                <input type="time" id="fOut" required />
+              </div>
+            </div>
+            <div class="field">
+              <label>Notas (opcional)</label>
+              <input type="text" id="fNotes" placeholder="Ej. fabricación de chasis" />
+            </div>
+            <button class="btn" type="submit">Registrar asistencia</button>
+            <div class="err">${state.formError}</div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <h2>Resumen del mes</h2>
+          <div class="stat"><span class="label">Horas aprobadas</span><span class="value good">${fmtHours(approvedHours)} h</span></div>
+          <div class="stat"><span class="label">Horas pendientes de revisión</span><span class="value">${fmtHours(pendingHours)} h</span></div>
+          <div class="stat"><span class="label">Registros marcados para revisar</span><span class="value ${flaggedCount ? 'warn' : ''}">${flaggedCount}</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Tu bitácora</h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>#</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Horas</th><th>Estado</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="adminzone">
+        ${state.isAdmin ? renderAdminPanel() : renderAdminGate()}
+      </div>
+    `;
+  }
+
+  function statusLabel(s){
+    return s === 'aprobado' ? 'Aprobado' : s === 'rechazado' ? 'Rechazado' : 'Pendiente';
+  }
+
+  function renderAdminGate(){
+    if(!state.adminAttempt){
+      return `<button class="linkbtn" id="openAdmin">Modo administrador →</button>`;
+    }
+    return `
+      <div class="adminlogin">
+        <label style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);">PIN de administrador</label>
+        <input type="password" id="pinInput" placeholder="••••••" />
+        <div style="display:flex;gap:8px;">
+          <button class="btn small" id="submitPin" type="button">Entrar</button>
+          <button class="btn secondary small" id="cancelAdmin" type="button">Cancelar</button>
+        </div>
+        <div class="err">${state.adminError}</div>
+      </div>
+    `;
+  }
+
+  function renderAdminPanel(){
+    const filterOptions = ['ALL', ...state.roster].map(n =>
+      `<option value="${escapeHtml(n)}" ${state.filterUser===n?'selected':''}>${n==='ALL'?'Todos los integrantes':escapeHtml(n)}</option>`
+    ).join('');
+
+    const filtered = state.entries
+      .filter(e => state.filterUser === 'ALL' || e.user === state.filterUser)
+      .sort((a,b) => (b.date+b.timeIn).localeCompare(a.date+a.timeIn));
+
+    const totalApproved = state.entries.filter(e => e.status === 'aprobado').reduce((s,e) => s+e.hours, 0);
+    const totalPending = state.entries.filter(e => e.status === 'pendiente').length;
+    const totalFlagged = state.entries.filter(e => e.autoFlag && e.status === 'pendiente').length;
+
+    const rows = filtered.length ? filtered.map((e, i) => `
+      <tr>
+        <td class="rownum" data-label="#">${filtered.length - i}</td>
+        <td data-label="Integrante">${escapeHtml(e.user)}</td>
+        <td data-label="Fecha">${e.date}</td>
+        <td data-label="Horario">${e.timeIn}–${e.timeOut}</td>
+        <td data-label="Horas">${fmtHours(e.hours)} h</td>
+        <td data-label="Estado / notas">
+          <span class="badge ${e.status}">${statusLabel(e.status)}</span>
+          ${e.autoFlag ? '<span class="flag" title="Marcado automáticamente: horas fuera de rango o registros que se cruzan">⚠</span>' : ''}
+          ${e.notes ? `<div style="color:var(--muted);font-size:11px;margin-top:3px;">${escapeHtml(e.notes)}</div>` : ''}
+          ${e.adminNote ? `<div style="color:var(--bad);font-size:11px;margin-top:3px;">Nota admin: ${escapeHtml(e.adminNote)}</div>` : ''}
+        </td>
+        <td data-label="Acciones">
+          <div class="actions">
+            ${e.status !== 'aprobado' ? `<button class="btn secondary small" data-approve="${e.id}">Aprobar</button>` : ''}
+            ${e.status !== 'rechazado' ? `<button class="btn secondary small" data-reject-toggle="${e.id}">Rechazar</button>` : ''}
+            <button class="btn secondary small" data-delete="${e.id}">Eliminar</button>
+          </div>
+          ${state.noteOpenFor === e.id ? `
+            <div class="notebox">
+              <textarea id="noteText_${e.id}" placeholder="Motivo (opcional)"></textarea>
+              <button class="btn small" data-reject-confirm="${e.id}">Confirmar</button>
+            </div>
+          ` : ''}
+        </td>
+      </tr>
+    `).join('') : `<tr><td colspan="7" class="empty">No hay registros para este filtro.</td></tr>`;
+
+    return `
+      <div class="adminbar">
+        <h2>Panel de administrador <span class="admintag">ACTIVO</span></h2>
+        <button class="linkbtn" id="exitAdmin">Salir del modo administrador</button>
+      </div>
+
+      <div class="summarystrip">
+        <div class="sumcard"><div class="n">${fmtHours(totalApproved)} h</div><div class="l">Horas totales aprobadas</div></div>
+        <div class="sumcard"><div class="n">${totalPending}</div><div class="l">Registros pendientes de revisión</div></div>
+        <div class="sumcard"><div class="n">${totalFlagged}</div><div class="l">Marcados automáticamente</div></div>
+        <div class="sumcard"><div class="n">${state.roster.length}</div><div class="l">Integrantes registrados</div></div>
+      </div>
+
+      <div class="filters">
+        <select id="userFilter">${filterOptions}</select>
+        <button class="linkbtn" id="togglePinChange">Cambiar PIN de administrador</button>
+      </div>
+
+      ${state.changePinOpen ? `
+        <div class="adminlogin" style="margin-bottom:16px;">
+          <label style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);">Nuevo PIN</label>
+          <input type="text" id="newPin" placeholder="Nuevo PIN" />
+          <button class="btn small" id="savePin" type="button">Guardar PIN</button>
+        </div>
+      ` : ''}
+
+      <div class="panel">
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>#</th><th>Integrante</th><th>Fecha</th><th>Horario</th><th>Horas</th><th>Estado / notas</th><th>Acciones</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // ---------- events ----------
+  function attachMainEvents(){
+    document.getElementById('switchUser').addEventListener('click', () => {
+      state.user = null; state.isAdmin = false; state.adminAttempt = false;
+      render();
+    });
+
+    document.getElementById('markIn').addEventListener('click', () => {
+      document.getElementById('fDate').value = todayISO();
+      document.getElementById('fIn').value = nowHM();
+    });
+    document.getElementById('markOut').addEventListener('click', () => {
+      document.getElementById('fOut').value = nowHM();
+    });
+
+    document.getElementById('entryForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const date = document.getElementById('fDate').value;
+      const timeIn = document.getElementById('fIn').value;
+      const timeOut = document.getElementById('fOut').value;
+      const notes = document.getElementById('fNotes').value.trim();
+
+      if(!date || !timeIn || !timeOut){
+        state.formError = "Completa fecha, entrada y salida.";
+        render(); return;
+      }
+      const hours = calcHours(timeIn, timeOut);
+      if(hours <= 0){
+        state.formError = "La hora de salida debe ser posterior a la de entrada.";
+        render(); return;
+      }
+      const entry = {
+        user: state.user,
+        date, timeIn, timeOut, hours,
+        notes,
+        status: 'pendiente',
+        adminNote: '',
+        createdAt: new Date().toISOString()
+      };
+      entry.autoFlag = detectAutoFlag(entry, state.entries);
+      state.formError = "";
+      await addEntry(entry);
+      render();
+    });
+
+    const openAdmin = document.getElementById('openAdmin');
+    if(openAdmin) openAdmin.addEventListener('click', () => { state.adminAttempt = true; state.adminError=''; render(); });
+
+    const cancelAdmin = document.getElementById('cancelAdmin');
+    if(cancelAdmin) cancelAdmin.addEventListener('click', () => { state.adminAttempt = false; render(); });
+
+    const submitPin = document.getElementById('submitPin');
+    if(submitPin) submitPin.addEventListener('click', () => {
+      const val = document.getElementById('pinInput').value;
+      if(val === state.config.adminPin){
+        state.isAdmin = true; state.adminAttempt = false; state.adminError = '';
+      }else{
+        state.adminError = "PIN incorrecto.";
+      }
+      render();
+    });
+
+    const exitAdmin = document.getElementById('exitAdmin');
+    if(exitAdmin) exitAdmin.addEventListener('click', () => { state.isAdmin = false; state.adminAttempt = false; render(); });
+
+    if(state.isAdmin){
+      document.getElementById('userFilter').addEventListener('change', (e) => {
+        state.filterUser = e.target.value; render();
+      });
+
+      const togglePin = document.getElementById('togglePinChange');
+      if(togglePin) togglePin.addEventListener('click', () => { state.changePinOpen = !state.changePinOpen; render(); });
+
+      const savePin = document.getElementById('savePin');
+      if(savePin) savePin.addEventListener('click', async () => {
+        const np = document.getElementById('newPin').value.trim();
+        if(np){ state.config.adminPin = np; await saveConfig(); state.changePinOpen = false; render(); }
+      });
+
+      document.querySelectorAll('[data-approve]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-approve');
+          await updateEntry(id, { status: 'aprobado', adminNote: '' });
+          render();
+        });
+      });
+
+      document.querySelectorAll('[data-reject-toggle]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-reject-toggle');
+          state.noteOpenFor = state.noteOpenFor === id ? null : id;
+          render();
+        });
+      });
+
+      document.querySelectorAll('[data-reject-confirm]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-reject-confirm');
+          const ta = document.getElementById('noteText_'+id);
+          await updateEntry(id, { status: 'rechazado', adminNote: ta ? ta.value.trim() : '' });
+          state.noteOpenFor = null;
+          render();
+        });
+      });
+
+      document.querySelectorAll('[data-delete]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-delete');
+          if(confirm('¿Eliminar este registro de forma permanente?')){
+            await deleteEntry(id);
+            render();
+          }
+        });
+      });
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
