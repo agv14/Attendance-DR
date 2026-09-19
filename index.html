@@ -278,7 +278,6 @@
 // ---------- data layer ----------
   async function init(){
     if(FIREBASE_READY){
-      // Respaldo: si Firestore tarda más de 3s en responder, quita el loader
       setTimeout(() => {
         if(!state.loaded){
           state.loaded = true;
@@ -302,11 +301,14 @@
       }, err => console.error('roster listener', err));
 
       db.collection('meta').doc('config').onSnapshot(doc => {
-        if(doc.exists){ state.config = doc.data(); }
-        else{ db.collection('meta').doc('config').set({ adminPin: DEFAULT_PIN }); }
+        if(doc.exists){ 
+          state.config = doc.data(); 
+        } else { 
+          db.collection('meta').doc('config').set({ adminPin: DEFAULT_PIN }); 
+        }
         render();
       }, err => console.error('config listener', err));
-    }else{
+    } else {
       state.entries = localGet('fsae_entries', []);
       state.roster = localGet('fsae_roster', []);
       state.config = localGet('fsae_config', { adminPin: DEFAULT_PIN });
@@ -317,29 +319,7 @@
     render();
     startClock();
   }
-
-      db.collection('meta').doc('roster').onSnapshot(doc => {
-        state.roster = (doc.exists && doc.data().names) || [];
-        render();
-      }, err => console.error('roster listener', err));
-
-      db.collection('meta').doc('config').onSnapshot(doc => {
-        if(doc.exists){ state.config = doc.data(); }
-        else{ db.collection('meta').doc('config').set({ adminPin: DEFAULT_PIN }); }
-        render();
-      }, err => console.error('config listener', err));
-    }else{
-      state.entries = localGet('fsae_entries', []);
-      state.roster = localGet('fsae_roster', []);
-      state.config = localGet('fsae_config', { adminPin: DEFAULT_PIN });
-      state.loaded = true;
-    }
-    const lastUser = localGet('fsae_lastUser', null);
-    if(lastUser) state.user = lastUser;
-    render();
-    startClock();
-  }
-
+ 
   async function addEntry(entry){
     if(FIREBASE_READY){
       await db.collection('entries').add(entry);
